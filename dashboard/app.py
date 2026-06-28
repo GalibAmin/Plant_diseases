@@ -15,6 +15,7 @@ checkpoints you have on disk.
 
 import os
 
+import gdown
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -24,28 +25,36 @@ from tensorflow.keras.models import load_model
 from class_names import CLASS_NAMES, format_class_name
 
 # ----------------------------------------------------------------------
-# Config — edit paths/filenames here if your checkpoints differ
+# Config — edit paths/filenames/Drive IDs here if your checkpoints differ
 # ----------------------------------------------------------------------
 MODELS_DIR = os.path.join(os.path.dirname(__file__), "..", "models")
 
+# drive_id = the file ID from a Google Drive share link:
+#   https://drive.google.com/file/d/<THIS_PART>/view?usp=sharing
+# The file's sharing setting must be "Anyone with the link", or the
+# download below will fail with a permission error.
 MODEL_CONFIG = {
     "MobileNetV2": {
-        "path": os.path.join(MODELS_DIR, "mobilenet_best.keras"),
+        "path": os.path.join(MODELS_DIR, "10epochmobilenetv2.keras"),
+        "drive_id": "13BGBlaB7hC52OYSL2zAHKsSCSrcRt-2_",
         "target_size": (224, 224),
         "recommended": True,
     },
     "VGG16": {
-        "path": os.path.join(MODELS_DIR, "20epochvgg16model.keras"),
+        "path": os.path.join(MODELS_DIR, "vgg16model.keras"),
+        "drive_id": "1jiPPyHf0oF-UAzGBqVZsVZrAm0XOQgDu",
         "target_size": (224, 224),
         "recommended": False,
     },
     "ResNet50": {
         "path": os.path.join(MODELS_DIR, "100epochrenet.keras"),
+        "drive_id": "1n2zLcckLDWUDUd2pKzeYghtJVTsm09go",
         "target_size": (256, 256),
         "recommended": False,
     },
     "EfficientNetB0": {
         "path": os.path.join(MODELS_DIR, "30eppochefficientnet.keras"),
+        "drive_id": "1f5RHxej8WUtlEjbgjo_SytW8rxnWrwJj",
         "target_size": (224, 224),
         "recommended": False,
     },
@@ -59,21 +68,41 @@ st.set_page_config(
 
 
 # ----------------------------------------------------------------------
-# Cached model loading — Streamlit reruns the script on every interaction,
-# so caching keeps us from reloading multi-hundred-MB models each time.
+# Download-on-demand — fetches a model from Google Drive the first time
+# it's needed, then reuses the local copy on every run after that.
 # ----------------------------------------------------------------------
-@st.cache_resource(show_spinner=False)
+def ensure_model_downloaded(cfg) -> bool:
+    if os.path.exists(cfg["path"]):
+        return True
+
+    drive_id = cfg.get("drive_id")
+    if not drive_id or drive_id.startswith("PASTE_"):
+        return False
+
+    os.makedirs(MODELS_DIR, exist_ok=True)
+    try:
+        gdown.download(id=drive_id, output=cfg["path"], quiet=False)
+    except Exception:  # noqa: BLE001
+        return False
+    return os.path.exists(cfg["path"])
+
+
+# ----------------------------------------------------------------------
+# Cached model loading — Streamlit reruns the script on every interaction,
+# so caching keeps us from re-downloading/reloading models each time.
+# ----------------------------------------------------------------------
+@st.cache_resource(show_spinner="Downloading & loading models (first run only)...")
 def load_available_models():
     loaded = {}
     missing = []
     for name, cfg in MODEL_CONFIG.items():
-        if os.path.exists(cfg["path"]):
-            try:
-                loaded[name] = load_model(cfg["path"], compile=False)
-            except Exception as e:  # noqa: BLE001
-                missing.append((name, f"failed to load: {e}"))
-        else:
-            missing.append((name, "file not found"))
+        if not ensure_model_downloaded(cfg):
+            missing.append((name, "not found locally and Drive download failed/unconfigured"))
+            continue
+        try:
+            loaded[name] = load_model(cfg["path"], compile=False)
+        except Exception as e:  # noqa: BLE001
+            missing.append((name, f"failed to load: {e}"))
     return loaded, missing
 
 
@@ -133,7 +162,7 @@ if missing:
         for name, reason in missing:
             st.write(f"- **{name}**: {reason}")
         st.info(
-            "Place the corresponding `.keras` file in the `models/` folder "
+            "Add a real `drive_id` for this model in `MODEL_CONFIG` "
             "(see `models/README.md`) to enable it here."
         )
 
