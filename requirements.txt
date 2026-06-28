@@ -1,0 +1,17 @@
+# Core
+numpy>=1.26
+pandas>=2.2
+matplotlib>=3.8
+seaborn>=0.13
+
+# Deep learning
+tensorflow>=2.15
+scikit-learn>=1.4
+
+# Dashboard
+streamlit>=1.32
+Pillow>=10.0
+
+# Notebook execution (optional, only if running notebooks locally instead of Kaggle/Colab)
+jupyter>=1.0
+ipykernel>=6.29
